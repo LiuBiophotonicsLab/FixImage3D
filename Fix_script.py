@@ -54,12 +54,12 @@ def process_fix(h5path,
     for i in tqdm(range(len(img)), desc="Converting..."):
 
         img_corrected[i] = fd.stripe_fix(img[i])
-        # img_corrected[i] = fd.contrast_fix(img_corrected[i], 
-        #                                    p2[i], 
-        #                                    p98[i], 
-        #                                    min[i],
-        #                                    global_max
-        #                                    )
+        img_corrected[i] = fd.contrast_fix(img_corrected[i], 
+                                           p2[i], 
+                                           p98[i], 
+                                           min[i],
+                                           global_max
+                                           )
 
     tiffname, tiffname_corrected, h5name_corrected = fd.saveFileName(chan[1])
 
