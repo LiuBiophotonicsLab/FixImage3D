@@ -2,7 +2,7 @@ import os
 import numpy as np
 from tqdm import tqdm
 import argparse
-from Fix_depth_stripe import FixImage3d
+from FixImage3D import FixImage3d
 import plot as pm
 import time
 
@@ -24,11 +24,14 @@ python depthfix\\Fix_script.py W:\\UPenn_Clinical\\OTLS4_NODO_2-24-23_AFM010_wel
 """
 
 
+
 def process_fix(h5path, 
                 chan, 
                 res, 
                 zxy, 
-                save_home):
+                save_home,
+                savehdf5,
+                savetiff):
     """
     Return: 
     - img: 3D array, original volume
@@ -64,9 +67,13 @@ def process_fix(h5path,
     tiffname, tiffname_corrected, h5name_corrected = fd.saveFileName(chan[1])
 
     print("saving..")
-    fd.savetif(img, tiffname)
-    fd.savetif(img_corrected, tiffname_corrected)
-    fd.savehdf5(img_corrected, h5name_corrected, chan[0])
+    if savetiff == True:
+        fd.savetif(img, tiffname)
+        fd.savetif(img_corrected, tiffname_corrected)
+    if savehdf5 == True:
+        if chan[0] == "s00":
+            fd.h5init(h5name_corrected)
+        fd.savehdf5(img_corrected, h5name_corrected, chan[0])
 
     return img, img_corrected
 
@@ -88,17 +95,29 @@ def main():
     # save home directory
     parser.add_argument('--save_home', type=str, nargs='?', default="")
 
+    # save file option
+    parser.add_argument('saveftype', type=str, nargs='?', default="")
+
     args = parser.parse_args()
 
     h5path = args.h5path
     res = args.res
     zxy = args.zxy
+    
 
     # if save home directory, not specified, return the h5file home directory
     if args.save_home == "":
         save_home = os.path.dirname(args.h5path)
     else: 
         save_home = args.save_home
+
+    savetiff = True
+    savehdf5 = True
+    if args.saveftype == "tiff":
+        savehdf5 = False
+    elif args.saveftype == "h5":
+        savetiff = False
+
 
     channel = [("s00", 'nuc'),
                ("s01", 'cyto')] 
@@ -110,7 +129,9 @@ def main():
                                          chan, 
                                          res,
                                          zxy,
-                                         save_home)
+                                         save_home,
+                                         savehdf5,
+                                         savetiff)
     
 
         pm.plot_corrected(img_corrected, save_home, chan[1])
