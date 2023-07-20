@@ -11,73 +11,16 @@ import time
 ====================================================================================================================
 Run: 
 
-python .py file -h5path -res -zxy -savehome
-
+python Fix_script.py --h5path [--res]  [--save_home]
 
 
 Example:
 
-python depthfix\\Fix_script.py W:\\UPenn_Clinical\\OTLS4_NODO_2-24-23_AFM010_well_1\\fused_041223\\fused.h5 --res 3
+python Fix_script.py DataExample\\fused.h5 --res 0
 
 ====================================================================================================================
 
 """
-
-
-
-def process_fix(h5path, 
-                chan, 
-                res, 
-                zxy, 
-                save_home,
-                savehdf5,
-                savetiff):
-    """
-    Return: 
-    - img: 3D array, original volume
-    - img_corrected: 3D array, stripe and depth corrected volume
-    """
-
-    fd = FixImage3d(h5path=h5path, 
-                res=res, 
-                zxy=zxy, 
-                savehome=save_home)
-
-    print("reading 8x downsampled volume...")
-    img_8x = fd.readH5Data(chan[0], 3)
-
-    print("reading selected res volume...")
-    img = fd.readH5Data(chan[0], res)
-
-    p2, p98, min, mean_prof, global_max  = fd.calculate_rescale_lim(img_8x, 
-                                                        img_length = img.shape[0]
-                                                        )
-
-    img_corrected = np.zeros_like(img)
-    for i in tqdm(range(len(img)), desc="Converting..."):
-
-        img_corrected[i] = fd.stripe_fix(img[i])
-        img_corrected[i] = fd.contrast_fix(img_corrected[i], 
-                                           p2[i], 
-                                           p98[i], 
-                                           min[i],
-                                           global_max
-                                           )
-
-    tiffname, tiffname_corrected, h5name_corrected = fd.saveFileName(chan[1])
-
-    print("saving..")
-    if savetiff == True:
-        fd.savetif(img, tiffname)
-        fd.savetif(img_corrected, tiffname_corrected)
-    if savehdf5 == True:
-        if chan[0] == "s00":
-            fd.h5init(h5name_corrected)
-        fd.savehdf5(img_corrected, h5name_corrected, chan[0])
-
-    return img, img_corrected
-
-
 
 def main():
 
@@ -89,9 +32,6 @@ def main():
     # specify resolution
     parser.add_argument("--res", type=str, help="can't be larger than 3", nargs='?', default= 0)
 
-    # specify the axis 
-    parser.add_argument('--zxy', type=bool, nargs='?', default= True)
-
     # save home directory
     parser.add_argument('--save_home', type=str, nargs='?', default="")
 
@@ -102,10 +42,8 @@ def main():
 
     h5path = args.h5path
     res = args.res
-    zxy = args.zxy
-    
 
-    # if save home directory, not specified, return the h5file home directory
+    # if save home directory not specified, return the h5file home directory
     if args.save_home == "":
         save_home = os.path.dirname(args.h5path)
     else: 
@@ -118,28 +56,37 @@ def main():
     elif args.saveftype == "h5":
         savetiff = False
 
+    channel = ["s00", "s01"] 
 
-    channel = [("s00", 'nuc'),
-               ("s01", 'cyto')] 
+    for ch in channel:
 
-    # loop through the two channels
-    for chan in channel:
+        print(ch)
 
-        img, img_corrected = process_fix(h5path,
-                                         chan, 
-                                         res,
-                                         zxy,
-                                         save_home,
-                                         savehdf5,
-                                         savetiff)
-    
+        fd = FixImage3d(h5path=h5path, 
+                        res=res, 
+                        chan = ch,
+                        savehome=save_home)
 
-        pm.plot_corrected(img_corrected, save_home, chan[1])
-        pm.plot_original(img, save_home, chan[1])
+        img = fd.readH5Data(res)
+
+        img_corrected = np.zeros_like(img)
+        for i in tqdm(range(len(img)), desc="Converting..."):
+
+            img_corrected[i] = fd.stripe_fix(img[i])
+            img_corrected[i] = fd.contrast_fix(img_corrected[i], i)
+
+        if savetiff == True:
+            fd.savetif(img, img_corrected)
+
+        if savehdf5 == True:
+            fd.savehdf5(img_corrected)
+
+        pm.plot_corrected(img_corrected, save_home, ch)
+        pm.plot_original(img, save_home, ch)
 
 
 if __name__ == '__main__':
     start = time.time()
     main()
     elapsed = time.time() - start
-    print("done. \nruntime = %.5f s" %elapsed)
+    print("Done. \nruntime = %.5f s" %elapsed)

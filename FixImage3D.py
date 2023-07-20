@@ -1,48 +1,96 @@
 import numpy as np
 import h5py as h5
-import numpy as np
-from tqdm import tqdm
 from skimage import exposure
+from skimage import transform
 import os
-#from scipy import signal as sp
+
 
 class FixImage3d(object):
+    """
+    A class for fixing and processing 3D image data.
+
+    Attributes:
+        h5path (str): Path to the HDF5 data file.
+        res (int): The resolution of the data.
+        chan (str): The channel identifier for the data, i.e. "s00", "s01"
+        savehome (str): Directory path to save the processed data.
+        sample_name (str): The sample name extracted from the HDF5 data file.
+        p2 (float): The 2% minimum value for rescaling the image data.
+        p98 (float): The 98% maximum value for rescaling the image data.
+        global_max (float): The maximum intensity value for rescaling the image data.
+        tiffname (str): The name of the TIFF file to save the original image.
+        tiffname_corrected (str): The name of the TIFF file to save the corrected image.
+        h5name_corrected (str): The name of the HDF5 file to save the corrected image.
+
+    """
+
     def __init__(self,
                  h5path,
                  res,
-                 zxy,
+                 chan,
                  savehome
                 ):
 
         self.h5path = h5path
         self.res = res
-        self.zxy = zxy
+        self.chan = chan
         self.savehome = savehome
-
         self.sample_name = os.path.basename(h5path).split(".h5")[0]
 
-    
-    def readH5Data(self, chan, res):
-        """
-        just to read .h5 file, with specific resolution and axis index
-        """
-        res = str(res)
-        with h5.File(self.h5path, 'r') as f:
-            img = f['t00000'][chan][res]['cells'][:,:,:].astype(np.uint16)
-            if self.zxy == False:
-                img = np.moveaxis(img, 0, 1)
+        # Read 8x downsampled data to calculate p2 and p98 for stripe-fixing
+        img_8x = self.readH5Data(3)
 
+        # fix striping for 8x downsample data first
+        for i in range(len(img_8x)):
+            img_8x[i] = self.stripe_fix(img_8x[i]) 
+            img_8x[i] = self.gamma_correction(img_8x[i])
+
+        self.p2, self.p98, self.global_max,_,_ = self.calculate_rescale_lim(img_8x)
+
+        self.tiffname, self.tiffname_corrected, self.h5name_corrected = self.saveFileName()
+
+    
+    def readH5Data(self, res):
+        """
+        Read .h5 file with specific resolution and axis index.
+
+        Args:
+        - res (int): The resolution to read.
+
+        Returns:
+        - img (np.ndarray): The 3D numpy array with the specified resolution.
+        """
+
+        print("Reading data...")
+        res = str(res)
+
+        with h5.File(self.h5path, 'r') as f:
+            img = f['t00000'][self.chan][res]['cells'][:,:,:].astype(np.uint16)
+            if img.shape[0]> img.shape[1]:
+                img = np.moveaxis(img, 0, 1)
         f.close()
 
         # in case the z levels are not cropped well
-        zstart, zend = int(len(img)*0.04), int(len(img)*0.98)
+        #zstart, zend = int(len(img)*0.04), int(len(img)*0.98)
 
-        self.shape = img.shape
-
-        return img[zstart:zend]
+        return img
 
 
-    def saveFileName(self, chan):
+    def saveFileName(self):
+        """
+        Create save file names and save them among the class.
+
+        Returns:
+        - tiffname (str): The name of the TIFF file.
+        - tiffname_corrected (str): The name of the corrected TIFF file.
+        - h5name_corrected (str): The name of the corrected .h5 file.
+        """
+
+        if self.chan == "s00":
+            chan = "nuc"
+        elif self.chan == "s01":
+            chan = "cyto"
+
         tiffname = \
                     (self.savehome + os.sep + self.sample_name + "_" + 
                     chan + ".tif")
@@ -59,13 +107,75 @@ class FixImage3d(object):
         return tiffname, tiffname_corrected, h5name_corrected
 
 
-    def savetif(self, img_3d, fname):
-        import tifffile as tf
-        img_3d = np.moveaxis(img_3d, 0, 2)
+    def savetif(self, img3d, img3d_corrected):
+        """
+        Save 3D image data as TIFF files.
 
-        tf.imwrite(fname, img_3d, photometric='rgb')
+        Args:
+        - img3d (np.ndarray): The original 3D image data.
+        - img3d_corrected (np.ndarray): The corrected 3D image data.
+        """
+
+        import tifffile as tf
+        img3d = np.moveaxis(img3d, 0, 2)
+        img3d_corrected = np.moveaxis(img3d_corrected, 0, 2)
+        print("Saving TIFF...")
+        tf.imwrite(self.tiffname, 
+                   img3d, 
+                   photometric='rgb')
+        tf.imwrite(self.tiffname_corrected, 
+                   img3d_corrected, 
+                   photometric='rgb')
+
+
+    def savehdf5(self, img_3d, ind1 = 0):
+        """
+        Save corrected image as .h5 file according to the specified format.
+
+        Args:
+        - img_3d (np.ndarray): The stripe and depth-corrected 3D volume.
+        - ind1 (int): Index for saving.
+
+        Returns:
+        - None
+        """
+
+        print("Saving HDF5...")
+
+        if self.chan == "s00":
+            self.shape = img_3d.shape
+            self.h5init(self.h5name_corrected)
+
+        with h5.File(self.h5name_corrected, 'a') as f:
+
+            res_list = [1, 2, 4, 8]
+
+            for z in range(len(res_list)):
+                res = res_list[z]
+
+                if res > 1: 
+                    img_3d = transform.downscale_local_mean(img_3d, 
+                                                            (2, 2, 2)
+                                                            ).astype("uint16")
+
+                if ind1 == 0:
+                    ind1_r = ind1
+                else:
+                    ind1_r = np.ceil((ind1 + 1)/res - 1)
+
+                data = f['/t00000/' + str(self.chan) + '/' + str(z) + '/cells']
+                data[int(ind1_r):int(ind1_r+img_3d.shape[0])] = img_3d.astype('int16')
+
+        f.close()
+
 
     def h5init(self, dest):
+        """
+        Initialize and create HDF5 dataset.
+
+        Args:
+        - dest (str): The destination path for the HDF5 dataset.
+        """
 
         with h5.File(dest, 'a') as f:
 
@@ -94,7 +204,7 @@ class FixImage3d(object):
 
                     resgroup = f.create_group('/t00000/s' + str(idx).zfill(2) + '/' + str(z))
 
-                    data = f.require_dataset('/t00000/s' + str(idx).zfill(2) + '/' + str(z) + '/cells', 
+                    data = f.require_dataset('/t00000/s' + str(idx).zfill(2) + '/' + str(z) + '/cells',
                                              dtype='int16',
                                              shape=np.ceil(np.divide([self.shape[0], self.shape[1], self.shape[2]],
                                                                      res))
@@ -102,54 +212,17 @@ class FixImage3d(object):
         f.close()
 
 
-    def savehdf5(self, img_3d, fname, chan, ind1 = 0):
-        """
-        Save corrected img as .h5 file accroding to this format f['t00000/s01/1/cells'].
-
-        Args: 
-        - img_3d : stripe and depth corrected 3D volume 
-        - fname : name of the .h5 file
-        - chan : channel 
-
-        """
-        from skimage import transform
-        print(chan)
-
-        with h5.File(fname, 'a') as f:
-
-            res_list = [1, 2, 4, 8]
-
-            for z in range(len(res_list)):
-                res = res_list[z]
-
-                if res > 1: 
-                    img_3d = transform.downscale_local_mean(img_3d, 
-                                                            (2, 2, 2)
-                                                            ).astype("uint16")
-
-                if ind1 == 0:
-                    ind1_r = ind1
-                else:
-                    ind1_r = np.ceil((ind1 + 1)/res - 1)
-
-                data = f['/t00000/' + str(chan) + '/' + str(z) + '/cells']
-                data[int(ind1_r):int(ind1_r+img_3d.shape[0])] = img_3d.astype('int16')
-
-        f.close()
-
-
     def getBackgroundLevels(self, image, threshold=50):
         """
-        Calculate foreground and background values based on image
-        statistics, background is currently set to be 20% of foreground.
+        Calculate foreground and background values based on image statistics.
 
-        Params:
-        - image : 2D numpy array
-        - threshold : int, threshold above which is counted as foreground
+        Args:
+        - image (np.ndarray): The 2D numpy array of the image.
+        - threshold (int, optional): Threshold above which is counted as foreground.
 
         Returns:
-        - hi_val : int, Foreground values
-        - background : int, Background value
+        - hi_val (int): Foreground values.
+        - background (int): Background value.
         """
 
         image_DS = np.sort(image, axis=None)
@@ -162,88 +235,95 @@ class FixImage3d(object):
 
     def stripe_fix(self, img):
         """
-        Fix the vertical striping effect;
-        dividing each row in the image by the sum of binning all columns.
+        Fix the vertical striping effect in the image.
 
-        Params: 
-        - img : 2D numpy array
-        
-        Returns: 
-        - img_nobg : stripe-fixed image
+        Args:
+        - img (np.ndarray): The 2D numpy array of the image.
+
+        Returns:
+        - img_nobg (np.ndarray): The stripe-fixed image.
         """
         
-        # Get background
+        # Calculate profiles with background removed 
         img_background = self.getBackgroundLevels(img)[1]
         img_nobg = np.clip(img - 0.5*img_background, 0, 2**16)
-
-        #### Calculate profiles with background removed ####
-        line_prof_n_nobg = np.zeros((img_nobg.shape[1]),dtype = np.float64) 
-        
-        ## Grab horizontal line profile
-        for col in range(img_nobg.shape[1]): ## Iterate through every column in image
-            line_prof_n_nobg[col] = np.sum(img_nobg[:, col].astype(np.float64)) 
-
-        ## Normalize line profile
+        line_prof_n_nobg = img_nobg.sum(axis=0)
         line_prof_n_nobg = line_prof_n_nobg/np.max(line_prof_n_nobg)
 
-        for row in range(img_nobg.shape[0]):
-            img_nobg[row, :] = img_nobg[row, :]/line_prof_n_nobg
-        
-        img_nobg[img_nobg<0] = 0
+        # Divide the 2D image with the horizontal line profile
+        img_nobg /= line_prof_n_nobg[np.newaxis, :]
+        img_nobg[img_nobg<0] = 0 # To ensure no negative vals
+
         return img_nobg.astype(np.uint16)
 
 
-    def calculate_rescale_lim(self, img_8x, img_length):
+    def calculate_rescale_lim(self, img_8x):
         """
-        calculate the p2 and p98, min and mean for 8x downsampled 3D image, 
-        the p2 and p98 for highest resolution image.
+        Calculate the p2 and p98, min, and mean for the 8x downsampled 3D image.
 
-        Params: 
-        - img8x: 3D numpy array, 8x downsampled volume
-        - img_length: int, length of z axis for highest resolution data
-        
-        Return: 
-        - p2: 1D array, 2% min for highest res volume interpolated from 8x 
-            downsampled volume
-        - p98: 1D array, 98% max for highest res volume interpolated from 8x 
-            downsampled volume
-        - min: 1D array, min for highest res volume interpolated from 8x 
-            downsampled volume 
+        Args:
+        - img_8x (np.ndarray): The 8x downsampled volume.
+
+        Returns:
+        - p2 (np.ndarray): Array of 2% min for the highest resolution volume interpolated from 8x downsampled volume.
+        - p98 (np.ndarray): Array of 98% max for the highest resolution volume interpolated from 8x downsampled volume.
+        - global_max (float): The max intensity for the 3D volume.
+        - min (np.ndarray): Array of min for the highest resolution volume interpolated from 8x downsampled volume.
+        - mean (np.ndarray): Array of mean for the highest resolution volume interpolated from 8x downsampled volume.
         """
 
-        # fix striping for 8x downsample data first
-        for i in range(len(img_8x)):
-            img_8x[i] = self.stripe_fix(img_8x[i]) 
-            img_8x[i] = self.gamma_correction(img_8x[i])
-
-        # find the metricsfor the stipe fix 8x downsample data
         p2, p98 = np.percentile(img_8x,
                                 (2, 98), 
                                 axis = (1,2)
-                                # ,method='linear'
                                 )
 
-        global_max = p98.max()*1.1
+        global_max = p98.max()
         mean = img_8x.mean(axis = (1,2))
         mean_prof = mean/mean.max()
         min = img_8x.min(axis = (1,2))
 
-        # interpolate to the shape of specified res data
-        n = img_8x.shape[0]
-        x = np.linspace(1, n, n)
-        xvals = np.linspace(1, n , img_length)
-        p2 = np.interp(xvals, x, p2)
-        p98 = np.interp(xvals, x, p98)
-        min = np.interp(xvals, x, min)
-        mean_prof = np.interp(xvals, x, mean_prof)
+        p2 = self.Interpl_8x(p2)
+        p98 = self.Interpl_8x(p98)
+        min = self.Interpl_8x(min)
+        mean_prof = self.Interpl_8x(mean_prof)
 
-        return p2, p98, min, mean_prof, global_max
+        return p2, p98, global_max, min, mean_prof
+
+
+    def Interpl_8x(self, metric_array_8x):
+        """
+        Interpolate to the shape of specified resolution data.
+
+        Args:
+        - metric_array_8x (np.ndarray): The metric array of 8x downsampled data.
+
+        Returns:
+        - metric (np.ndarray): The interpolated metric array.
+        """
+
+        with h5.File(self.h5path, 'r') as f: 
+            img_shape = f['t00000/s00'][self.res]['cells'].shape
+        f.close()
+
+        img_length = np.min(img_shape)
+        n = len(metric_array_8x)
+        x = np.linspace(1,n,n)
+        xvals = np.linspace(1,n,img_length)
+        metric = np.interp(xvals, x, metric_array_8x)
+
+        return metric
 
 
     def mean_correction(self, img, mean_prof):
         """
-        img: 2D image for the layer of interest
-        mean_prof: float of the layer of interest of 1D array
+        Apply mean correction to the image.
+
+        Args:
+        - img (np.ndarray): The 2D image for the layer of interest.
+        - mean_prof (float): The mean value for the layer of interest or 1D array.
+
+        Returns:
+        - img (np.ndarray): The corrected 2D image.
         """
 
         img = img/mean_prof
@@ -254,8 +334,14 @@ class FixImage3d(object):
 
     def gamma_correction(self, img, gamma = 0.7):
         """
-        img: 2D image
-        gamma: around 0.5 to 0.8
+        Apply gamma correction to the image.
+
+        Args:
+        - img (np.ndarray): The 2D image.
+        - gamma (float, optional): Gamma value around 0.5 to 0.8.
+
+        Returns:
+        - img (np.ndarray): The gamma-corrected 2D image.
         """
 
         img = exposure.adjust_gamma(img, gamma)
@@ -263,30 +349,23 @@ class FixImage3d(object):
         return img
 
 
-    def contrast_fix(self, 
-                     img, 
-                     p2, 
-                     p98, 
-                     min, 
-                     global_max):
+    def contrast_fix(self, img, i):
         """
-        Rescale the p2 and p98 in the 2D image to out_range
+        Rescale the p2 and p98 in the 2D image to the out_range.
 
-        Params: 
-        - img: 2D image for layer of interest
-        - p2: 2% min for that layer
-        - p98: 98% max for that layer
-        - min: min for that layer
-        - global_max: the max intensity for the 3D volume
+        Args:
+        - img (np.ndarray): The 2D image for the layer of interest.
+        - i (int): Index for current layer.
 
-        Return:
-        - img_rescale: 2D image for that layer, contrast rescaled
+        Returns:
+        - img_rescale (np.ndarray): The rescaled 2D image for that layer.
         """
+
         # img = img - min
         img = self.gamma_correction(img, 0.75)
         img_rescale = exposure.rescale_intensity(img, 
-                                                in_range=(p2*0.95, p98*1.1), 
-                                                out_range = (0, global_max) # maybe just 0 - 15000? p98 at the brightest layer
+                                                in_range=(self.p2[i]*0.95, self.p98[i]*1.15), 
+                                                out_range = (0, self.global_max*1.1)
                                                 )
         
         return img_rescale.astype(np.uint16)
