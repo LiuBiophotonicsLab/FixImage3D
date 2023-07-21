@@ -11,7 +11,7 @@ class FixImage3d(object):
 
     Attributes:
         h5path (str): Path to the HDF5 data file.
-        res (int): The resolution of the data.
+        res (int): The resolution of the data, i.e. "0", "1", "2", or "3"
         chan (str): The channel identifier for the data, i.e. "s00", "s01"
         savehome (str): Directory path to save the processed data.
         sample_name (str): The sample name extracted from the HDF5 data file.

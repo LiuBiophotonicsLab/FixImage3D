@@ -9,16 +9,30 @@ import time
 
 """
 ====================================================================================================================
-Run: 
+This script works for fused HDF5 data (.h5) that contain two channels. 
 
-python Fix_script.py --h5path [--res]  [--save_home]
+General Run format: 
+
+    python Fix_script.py --h5path [--res] [--save_home] [--saveftype]
 
 
-Example:
+Arguments: 
+    - h5path (Required) : 
+        File directory for the HDF5 file to be corrected
+    - res (optional) : 
+        Default to be "0" for highest resolution. Other options: "1", "2", "3" for 2x, 4x, 8x downsampled data
+    - save_home (optional) : 
+        Directory for saving corrected files. Default to be the home directory for HDF5 file if not specified.
+    - saveftype (optional) : 
+        Default to be TIFF and HDF5. Other options: "tiff" or "h5" for saving tiff files only or hdf5 file only.
 
-python Fix_script.py DataExample\\fused.h5 --res 0
+
+Run example: With 8x downsampled data, save corrected volume as TIFF files (separate channels) and HDF5 files.
+
+    python Fix_script.py DataExample\\fused.h5 --res 3
 
 ====================================================================================================================
+Sarah Chow, 06/2023
 
 """
 
