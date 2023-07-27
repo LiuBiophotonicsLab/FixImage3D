@@ -29,7 +29,7 @@ Arguments:
 
 Run example: With 8x downsampled data, save corrected volume as TIFF files (separate channels) and HDF5 files.
 
-    python Fix_script.py DataExample\\fused.h5 --res 3
+    python Fix_script.py Example\\Prostate.h5 --res 1
 
 ====================================================================================================================
 Sarah Chow, 06/2023
@@ -44,13 +44,13 @@ def main():
     parser.add_argument("h5path", help='directory with hdf5 data')
 
     # specify resolution
-    parser.add_argument("--res", type=str, help="can't be larger than 3", nargs='?', default= 0)
+    parser.add_argument("--res", type=str, help="can't be larger than 3", nargs='?', default= "0")
 
     # save home directory
     parser.add_argument('--save_home', type=str, nargs='?', default="")
 
     # save file option
-    parser.add_argument('saveftype', type=str, nargs='?', default="")
+    parser.add_argument('--saveftype', type=str, nargs='?', default="")
 
     args = parser.parse_args()
 
@@ -95,8 +95,8 @@ def main():
         if savehdf5 == True:
             fd.savehdf5(img_corrected)
 
-        pm.plot_corrected(img_corrected, save_home, ch)
-        pm.plot_original(img, save_home, ch)
+        # pm.plot_corrected(img_corrected, save_home, ch)
+        # pm.plot_original(img, save_home, ch)
 
 
 if __name__ == '__main__':
