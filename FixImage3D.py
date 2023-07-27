@@ -12,6 +12,7 @@ class FixImage3d(object):
     Attributes:
         h5path (str): Path to the HDF5 data file.
         res (int): The resolution of the data, i.e. "0", "1", "2", or "3"
+        orient (int) : The orientation of the data, 0 for ZXY, 1 for XZY .
         chan (str): The channel identifier for the data, i.e. "s00", "s01"
         savehome (str): Directory path to save the processed data.
         sample_name (str): The sample name extracted from the HDF5 data file.
@@ -27,12 +28,14 @@ class FixImage3d(object):
     def __init__(self,
                  h5path,
                  res,
+                 orient,
                  chan,
                  savehome
                 ):
 
         self.h5path = h5path
         self.res = res
+        self.orient = orient
         self.chan = chan
         self.savehome = savehome
         self.sample_name = os.path.basename(h5path).split(".h5")[0]
@@ -65,8 +68,8 @@ class FixImage3d(object):
 
         with h5.File(self.h5path, 'r') as f:
             img = f['t00000'][self.chan][res]['cells'][:,:,:].astype(np.uint16)
-            # if img.shape[0]> img.shape[1]:
-            #     img = np.moveaxis(img, 0, 1)
+            if self.orient == 1:
+                img = np.moveaxis(img, 0, 1)
         f.close()
 
         # in case the z levels are not cropped well
@@ -306,7 +309,7 @@ class FixImage3d(object):
         f.close()
 
         # img_length = int(np.min(img_shape)*0.94)
-        img_length = img_shape[0]
+        img_length = img_shape[self.orient]
         n = len(metric_array_8x)
         x = np.linspace(1,n,n)
         xvals = np.linspace(1,n,img_length)

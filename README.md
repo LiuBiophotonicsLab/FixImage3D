@@ -41,18 +41,21 @@ Typical installation time (after setting up Anaconda environment): less than 5 m
 
 ## Demo
 
-For a quick start, run the following command:
+For a **quick start**, run the following command:
 
 ```bash
-python Fix_script.py --h5path 
+python Fix_script.py Example\\SampleData_AFM010_4xds.h5
 ```
 
-For a step-by-step guide or to only run stripe-fix, refer to the Jupyter notebook.
+All the output files will be saved in the \Example folder. This quick start command fix both vertical stripes and intensity attenuation through depth. 
+
+For **step-by-step guide** , please refer to the "Demo_Fix_depth.ipynb" and "Demo_Fix_stripe.ipynb" in the \Example folder. 
 
 ## Results
 
 The output for quick start command includes: 
 
-- An HDF5 file saved with the name:  *sample_corrected.h5*
-- 4 TIFF files for cyto channel and nuc channel, before and after correction, with the name: *sample_corrected_nuc.tiff* , *sample_corrected_cyto.tiff* , *sample_nuc.tiff* , *sample_cyto.tiff*
-- 4 PNG files plotting the mean for each channel before and after correction.
+- An HDF5 file saved with the name:  *"sample_corrected.h5"*
+- 2 TIFF files for cyto channel, before and after correction, with the name: *"sample_cyto.tiff"* , *"sample_corrected_cyto.tiff"* 
+- 2 TIFF files for nuc channel, before and after correction, with the name: *"sample_nuc.tiff"* , *"sample_corrected_nuc.tiff"*
+

@@ -13,7 +13,7 @@ This script works for fused HDF5 data (.h5) that contain two channels.
 
 General Run format: 
 
-    python Fix_script.py --h5path [--res] [--save_home] [--saveftype]
+    python Fix_script.py --h5path [--res] [--orient] [--save_home] [--saveftype]
 
 
 Arguments: 
@@ -21,6 +21,8 @@ Arguments:
         File directory for the HDF5 file to be corrected
     - res (optional) : 
         Default to be "0" for highest resolution. Other options: "1", "2", "3" for 2x, 4x, 8x downsampled data
+    - orient (optional) : 
+        Default to be 0 for volume with orientation ZXY. Other option: 1 for vol with orientation XZY.
     - save_home (optional) : 
         Directory for saving corrected files. Default to be the home directory for HDF5 file if not specified.
     - saveftype (optional) : 
@@ -29,7 +31,7 @@ Arguments:
 
 Run example: With 8x downsampled data, save corrected volume as TIFF files (separate channels) and HDF5 files.
 
-    python Fix_script.py Example\\Prostate.h5 --res 1
+    python Fix_script.py Example\\SampleData_AFM010_4xds.h5
 
 ====================================================================================================================
 Sarah Chow, 06/2023
@@ -46,6 +48,9 @@ def main():
     # specify resolution
     parser.add_argument("--res", type=str, help="can't be larger than 3", nargs='?', default= "0")
 
+    # specify orientation
+    parser.add_argument("--orient", type = int, nargs='?', default=0)
+
     # save home directory
     parser.add_argument('--save_home', type=str, nargs='?', default="")
 
@@ -56,6 +61,7 @@ def main():
 
     h5path = args.h5path
     res = args.res
+    orient = args.orient
 
     # if save home directory not specified, return the h5file home directory
     if args.save_home == "":
@@ -78,6 +84,7 @@ def main():
 
         fd = FixImage3d(h5path=h5path, 
                         res=res, 
+                        orient = orient,
                         chan = ch,
                         savehome=save_home)
 
