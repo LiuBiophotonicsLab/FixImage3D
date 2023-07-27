@@ -46,7 +46,6 @@ class FixImage3d(object):
             img_8x[i] = self.gamma_correction(img_8x[i])
 
         self.p2, self.p98, self.global_max,_,_ = self.calculate_rescale_lim(img_8x)
-
         self.tiffname, self.tiffname_corrected, self.h5name_corrected = self.saveFileName()
 
     
@@ -66,12 +65,12 @@ class FixImage3d(object):
 
         with h5.File(self.h5path, 'r') as f:
             img = f['t00000'][self.chan][res]['cells'][:,:,:].astype(np.uint16)
-            if img.shape[0]> img.shape[1]:
-                img = np.moveaxis(img, 0, 1)
+            # if img.shape[0]> img.shape[1]:
+            #     img = np.moveaxis(img, 0, 1)
         f.close()
 
         # in case the z levels are not cropped well
-        #zstart, zend = int(len(img)*0.04), int(len(img)*0.98)
+        zstart, zend = int(len(img)*0.04), int(len(img)*0.98)
 
         return img
 
@@ -117,15 +116,14 @@ class FixImage3d(object):
         """
 
         import tifffile as tf
-        img3d = np.moveaxis(img3d, 0, 2)
-        img3d_corrected = np.moveaxis(img3d_corrected, 0, 2)
         print("Saving TIFF...")
-        tf.imwrite(self.tiffname, 
-                   img3d, 
-                   photometric='rgb')
-        tf.imwrite(self.tiffname_corrected, 
-                   img3d_corrected, 
-                   photometric='rgb')
+        with tf.TiffWriter(self.tiffname) as tif:
+            for i in range(len(img3d)):
+                tif.write(img3d[i], contiguous=True)
+
+        with tf.TiffWriter(self.tiffname_corrected) as tif:
+            for i in range(len(img3d)):
+                tif.write(img3d_corrected[i], contiguous=True)
 
 
     def savehdf5(self, img_3d, ind1 = 0):
@@ -276,6 +274,8 @@ class FixImage3d(object):
                                 (2, 98), 
                                 axis = (1,2)
                                 )
+        p2[-1] = p2[-2]
+        p98[-1] = p98[-2]
 
         global_max = p98.max()
         mean = img_8x.mean(axis = (1,2))
@@ -305,7 +305,8 @@ class FixImage3d(object):
             img_shape = f['t00000/s00'][self.res]['cells'].shape
         f.close()
 
-        img_length = np.min(img_shape)
+        # img_length = int(np.min(img_shape)*0.94)
+        img_length = img_shape[0]
         n = len(metric_array_8x)
         x = np.linspace(1,n,n)
         xvals = np.linspace(1,n,img_length)
@@ -364,7 +365,7 @@ class FixImage3d(object):
         # img = img - min
         img = self.gamma_correction(img, 0.75)
         img_rescale = exposure.rescale_intensity(img, 
-                                                in_range=(self.p2[i]*0.95, self.p98[i]*1.15), 
+                                                in_range=(self.p2[i]*0.95, self.p98[i]*1.12), 
                                                 out_range = (0, self.global_max*1.1)
                                                 )
         
