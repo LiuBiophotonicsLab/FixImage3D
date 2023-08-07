@@ -24,7 +24,7 @@ In addition, the following packages are required, many of which come with Python
 
 - Numpy 1.20.0
 - h5py 2.10.0
-- Scikit-image 0.21.0
+- Scikit-image 0.19.3
 - Matplotlib 3.3.4
 
 No specific computing hardware is required.
