@@ -40,13 +40,16 @@ class FixImage3d(object):
         self.savehome = savehome
         self.sample_name = os.path.basename(h5path).split(".h5")[0]
 
-        # Read 8x downsampled data to calculate p2 and p98 for stripe-fixing
+        #################### Initialization #######################
+        """
+        Read 8x downsampled volume to calculate for the p2, p98 and global max for contrast fixing.
+        Create file names to be saved for .tiff and .h5.
+        """
         img_8x = self.readH5Data(3)
 
-        # fix striping for 8x downsample data first
         for i in range(len(img_8x)):
-            img_8x[i] = self.stripe_fix(img_8x[i]) 
-            img_8x[i] = self.gamma_correction(img_8x[i])
+           img_8x[i] = self.gamma_correction(img_8x[i], 0.8)           
+           img_8x[i] = self.stripe_fix(img_8x[i]) 
 
         self.p2, self.p98, self.global_max,_,_ = self.calculate_rescale_lim(img_8x)
         self.tiffname, self.tiffname_corrected, self.h5name_corrected = self.saveFileName()
@@ -244,16 +247,17 @@ class FixImage3d(object):
         Returns:
         - img_nobg (np.ndarray): The stripe-fixed image.
         """
-        
+        img = self.gamma_correction(img, 0.8)
+
         # Calculate profiles with background removed 
         img_background = self.getBackgroundLevels(img)[1]
-        img_nobg = np.clip(img - 0.5*img_background, 0, 2**16)
+        img_nobg = np.clip(img - 0.5*img_background, 0, 2**16-1)
         line_prof_n_nobg = img_nobg.sum(axis=0)
         line_prof_n_nobg = line_prof_n_nobg/np.max(line_prof_n_nobg)
 
         # Divide the 2D image with the horizontal line profile
         img_nobg /= line_prof_n_nobg[np.newaxis, :]
-        img_nobg[img_nobg<0] = 0 # To ensure no negative vals
+        img_nobg = np.clip(img_nobg, 0, 2**16-1)
 
         return img_nobg.astype(np.uint16)
 
@@ -274,7 +278,7 @@ class FixImage3d(object):
         """
 
         p2, p98 = np.percentile(img_8x,
-                                (2, 98), 
+                                (1, 98), 
                                 axis = (1,2)
                                 )
         p2[-1] = p2[-2]
@@ -363,12 +367,10 @@ class FixImage3d(object):
 
         Returns:
         - img_rescale (np.ndarray): The rescaled 2D image for that layer.
-        """
-
-        # img = img - min
-        img = self.gamma_correction(img, 0.75)
+        """  
+        
         img_rescale = exposure.rescale_intensity(img, 
-                                                in_range=(self.p2[i]*0.95, self.p98[i]*1.12), 
+                                                in_range=(self.p2[i]*0.2, self.p98[i]*1.15), 
                                                 out_range = (0, self.global_max*1.1)
                                                 )
         
