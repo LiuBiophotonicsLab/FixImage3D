@@ -47,11 +47,7 @@ class FixImage3d(object):
         """
         img_8x = self.readH5Data(3)
 
-        for i in range(len(img_8x)):
-           img_8x[i] = self.gamma_correction(img_8x[i], 0.8)           
-           img_8x[i] = self.stripe_fix(img_8x[i]) 
-
-        self.p2, self.p98, self.global_max,_,_ = self.calculate_rescale_lim(img_8x)
+        self.p2, self.p98, self.global_max, self.global_min = self.calculate_rescale_lim(img_8x)
         self.tiffname, self.tiffname_corrected, self.h5name_corrected = self.saveFileName()
 
     
@@ -247,13 +243,17 @@ class FixImage3d(object):
         Returns:
         - img_nobg (np.ndarray): The stripe-fixed image.
         """
-        img = self.gamma_correction(img, 0.8)
+        # img = self.gamma_correction(img, 0.8)
 
         # Calculate profiles with background removed 
-        img_background = self.getBackgroundLevels(img)[1]
+        try:
+            img_background = self.getBackgroundLevels(img)[1]
+        except ValueError:
+            img_background = 0
         img_nobg = np.clip(img - 0.5*img_background, 0, 2**16-1)
         line_prof_n_nobg = img_nobg.sum(axis=0)
         line_prof_n_nobg = line_prof_n_nobg/np.max(line_prof_n_nobg)
+        line_prof_n_nobg[line_prof_n_nobg == 0] = 1
 
         # Divide the 2D image with the horizontal line profile
         img_nobg /= line_prof_n_nobg[np.newaxis, :]
@@ -277,24 +277,25 @@ class FixImage3d(object):
         - mean (np.ndarray): Array of mean for the highest resolution volume interpolated from 8x downsampled volume.
         """
 
+        global_max = img_8x.max()
+        global_min = img_8x.min()
+
+        for i in range(len(img_8x)):
+        #    img_8x[i] = self.gamma_correction(img_8x[i], 0.8)           
+           img_8x[i] = self.stripe_fix(img_8x[i]) 
+
         p2, p98 = np.percentile(img_8x,
-                                (1, 98), 
+                                (2, 98), 
                                 axis = (1,2)
                                 )
         p2[-1] = p2[-2]
         p98[-1] = p98[-2]
-
-        global_max = p98.max()
-        mean = img_8x.mean(axis = (1,2))
-        mean_prof = mean/mean.max()
-        min = img_8x.min(axis = (1,2))
+        # mean = img_8x.mean(axis = (1,2))
 
         p2 = self.Interpl_8x(p2)
         p98 = self.Interpl_8x(p98)
-        min = self.Interpl_8x(min)
-        mean_prof = self.Interpl_8x(mean_prof)
 
-        return p2, p98, global_max, min, mean_prof
+        return p2, p98, global_max, global_min
 
 
     def Interpl_8x(self, metric_array_8x):
@@ -368,10 +369,12 @@ class FixImage3d(object):
         Returns:
         - img_rescale (np.ndarray): The rescaled 2D image for that layer.
         """  
+
+        Clip_low = self.p2[i] - self.global_min
         
         img_rescale = exposure.rescale_intensity(img, 
-                                                in_range=(self.p2[i]*0.2, self.p98[i]*1.15), 
-                                                out_range = (0, self.global_max*1.1)
+                                                in_range=(Clip_low, self.p98[i]*1.5), 
+                                                out_range = (0, self.global_max)
                                                 )
         
         return img_rescale.astype(np.uint16)
