@@ -47,7 +47,7 @@ class FixImage3d(object):
         """
         img_8x = self.readH5Data(3)
 
-        self.p2, self.p98, self.global_max, self.global_min = self.calculate_rescale_lim(img_8x)
+        self.p2, self.p98, self.global_max = self.calculate_rescale_lim(img_8x)
         self.tiffname, self.tiffname_corrected, self.h5name_corrected = self.saveFileName()
 
     
@@ -277,15 +277,14 @@ class FixImage3d(object):
         - mean (np.ndarray): Array of mean for the highest resolution volume interpolated from 8x downsampled volume.
         """
 
-        global_max = img_8x.max()
-        global_min = img_8x.min()
+        global_max = np.percentile(img_8x,98)
 
         for i in range(len(img_8x)):
         #    img_8x[i] = self.gamma_correction(img_8x[i], 0.8)           
            img_8x[i] = self.stripe_fix(img_8x[i]) 
 
         p2, p98 = np.percentile(img_8x,
-                                (2, 98), 
+                                (15, 98), 
                                 axis = (1,2)
                                 )
         p2[-1] = p2[-2]
@@ -295,7 +294,7 @@ class FixImage3d(object):
         p2 = self.Interpl_8x(p2)
         p98 = self.Interpl_8x(p98)
 
-        return p2, p98, global_max, global_min
+        return p2, p98, global_max
 
 
     def Interpl_8x(self, metric_array_8x):
@@ -369,12 +368,12 @@ class FixImage3d(object):
         Returns:
         - img_rescale (np.ndarray): The rescaled 2D image for that layer.
         """  
-
-        Clip_low = self.p2[i] - self.global_min
+        img = img - img.min()
+        p2_normalized = self.p2 - self.p2.min()
         
         img_rescale = exposure.rescale_intensity(img, 
-                                                in_range=(Clip_low, self.p98[i]*1.5), 
-                                                out_range = (0, self.global_max)
+                                                in_range=(p2_normalized[i], self.p98[i]*1.5), 
+                                                out_range = (0, self.global_max*1.2)
                                                 )
         
         return img_rescale.astype(np.uint16)
