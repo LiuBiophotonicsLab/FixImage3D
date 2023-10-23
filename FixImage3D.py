@@ -248,7 +248,7 @@ class FixImage3d(object):
         # Calculate profiles with background removed 
         try:
             img_background = self.getBackgroundLevels(img)[1]
-        except ValueError:
+        except IndexError:
             img_background = 0
         img_nobg = np.clip(img - 0.5*img_background, 0, 2**16-1)
         line_prof_n_nobg = img_nobg.sum(axis=0)
@@ -284,14 +284,14 @@ class FixImage3d(object):
            img_8x[i] = self.stripe_fix(img_8x[i]) 
 
         p2, p98 = np.percentile(img_8x,
-                                (15, 98), 
+                                (2, 98), 
                                 axis = (1,2)
                                 )
         p2[-1] = p2[-2]
         p98[-1] = p98[-2]
         # mean = img_8x.mean(axis = (1,2))
 
-        p2 = self.Interpl_8x(p2)
+        p2 = self.Interpl_8x(p2) - p2.min()
         p98 = self.Interpl_8x(p98)
 
         return p2, p98, global_max
@@ -369,11 +369,10 @@ class FixImage3d(object):
         - img_rescale (np.ndarray): The rescaled 2D image for that layer.
         """  
         img = img - img.min()
-        p2_normalized = self.p2 - self.p2.min()
         
         img_rescale = exposure.rescale_intensity(img, 
-                                                in_range=(p2_normalized[i], self.p98[i]*1.5), 
-                                                out_range = (0, self.global_max*1.2)
+                                                in_range=(self.p2[i], self.p98[i]*1.5), 
+                                                out_range = (0, self.global_max*1.5)
                                                 )
         
         return img_rescale.astype(np.uint16)

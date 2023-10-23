@@ -110,4 +110,11 @@ if __name__ == '__main__':
     start = time.time()
     main()
     elapsed = time.time() - start
-    print("Done. \nruntime = %.5f s" %elapsed)
+    if elapsed > 60 and elapsed < 3600:
+        elapsed = elapsed/60
+        print("Done. \nruntime = %.2f min" %elapsed)
+    elif elapsed > 3600:
+        elapsed = elapsed/3600
+        print("Done. \nruntime = %.2f hr" %elapsed)
+    else:
+        print("Done. \nruntime = %.3f s" %elapsed)
