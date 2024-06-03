@@ -45,9 +45,7 @@ class FixImage3d(object):
         Read 8x downsampled volume to calculate for the p2, p98 and global max for contrast fixing.
         Create file names to be saved for .tiff and .h5.
         """
-        img_8x = self.readH5Data(3)
 
-        self.p2, self.p98, self.global_max = self.calculate_rescale_lim(img_8x)
         self.tiffname, self.tiffname_corrected, self.h5name_corrected = self.saveFileName()
 
     
@@ -70,9 +68,6 @@ class FixImage3d(object):
             if self.orient == 1:
                 img = np.moveaxis(img, 0, 1)
         f.close()
-
-        # in case the z levels are not cropped well
-        zstart, zend = int(len(img)*0.04), int(len(img)*0.98)
 
         return img
 
@@ -97,13 +92,13 @@ class FixImage3d(object):
                     chan + ".tif")
         tiffname_corrected = \
                     (self.savehome + os.sep + self.sample_name + "_" + 
-                    chan + "_corrected" + ".tif")
+                    chan + "_corrected1" + ".tif")
 
         h5name_corrected = \
                     (self.savehome + os.sep + 
                     self.sample_name + 
                     "_" +
-                    "corrected" + ".h5")
+                    "corrected1" + ".h5")
 
         return tiffname, tiffname_corrected, h5name_corrected
 
@@ -243,7 +238,6 @@ class FixImage3d(object):
         Returns:
         - img_nobg (np.ndarray): The stripe-fixed image.
         """
-        # img = self.gamma_correction(img, 0.8)
 
         # Calculate profiles with background removed 
         try:
@@ -260,66 +254,6 @@ class FixImage3d(object):
         img_nobg = np.clip(img_nobg, 0, 2**16-1)
 
         return img_nobg.astype(np.uint16)
-
-
-    def calculate_rescale_lim(self, img_8x):
-        """
-        Calculate the p2 and p98, min, and mean for the 8x downsampled 3D image.
-
-        Args:
-        - img_8x (np.ndarray): The 8x downsampled volume.
-
-        Returns:
-        - p2 (np.ndarray): Array of 2% min for the highest resolution volume interpolated from 8x downsampled volume.
-        - p98 (np.ndarray): Array of 98% max for the highest resolution volume interpolated from 8x downsampled volume.
-        - global_max (float): The max intensity for the 3D volume.
-        - min (np.ndarray): Array of min for the highest resolution volume interpolated from 8x downsampled volume.
-        - mean (np.ndarray): Array of mean for the highest resolution volume interpolated from 8x downsampled volume.
-        """
-
-        global_max = np.percentile(img_8x,98)
-
-        for i in range(len(img_8x)):
-        #    img_8x[i] = self.gamma_correction(img_8x[i], 0.8)           
-           img_8x[i] = self.stripe_fix(img_8x[i]) 
-
-        p2, p98 = np.percentile(img_8x,
-                                (2, 98), 
-                                axis = (1,2)
-                                )
-        p2[-1] = p2[-2]
-        p98[-1] = p98[-2]
-        # mean = img_8x.mean(axis = (1,2))
-
-        p2 = self.Interpl_8x(p2) - p2.min()
-        p98 = self.Interpl_8x(p98)
-
-        return p2, p98, global_max
-
-
-    def Interpl_8x(self, metric_array_8x):
-        """
-        Interpolate to the shape of specified resolution data.
-
-        Args:
-        - metric_array_8x (np.ndarray): The metric array of 8x downsampled data.
-
-        Returns:
-        - metric (np.ndarray): The interpolated metric array.
-        """
-
-        with h5.File(self.h5path, 'r') as f: 
-            img_shape = f['t00000/s00'][self.res]['cells'].shape
-        f.close()
-
-        # img_length = int(np.min(img_shape)*0.94)
-        img_length = img_shape[self.orient]
-        n = len(metric_array_8x)
-        x = np.linspace(1,n,n)
-        xvals = np.linspace(1,n,img_length)
-        metric = np.interp(xvals, x, metric_array_8x)
-
-        return metric
 
 
     def mean_correction(self, img, mean_prof):
@@ -357,7 +291,7 @@ class FixImage3d(object):
         return img
 
 
-    def contrast_fix(self, img, i):
+    def contrast_fix(self, img, p98, p2, p98_max, p2_min, p2_max):
         """
         Rescale the p2 and p98 in the 2D image to the out_range.
 
@@ -368,13 +302,19 @@ class FixImage3d(object):
         Returns:
         - img_rescale (np.ndarray): The rescaled 2D image for that layer.
         """  
-        img = img - img.min()
         
-        img_rescale = exposure.rescale_intensity(img, 
-                                                in_range=(self.p2[i], self.p98[i]*1.5), 
-                                                out_range = (0, self.global_max*1.5)
-                                                )
+        img_rescale = np.clip((img-p2+p2_max)*(p98_max-p2_min)/(p98-p2),
+                              0, 
+                              2**16-1)
         
+        return img_rescale.astype(np.uint16)
+
+    def rescale(self, img):
+        img_rescale = np.zeros_like(img)
+        img_min = img.min()
+        img_max = img.max()
+        for i in range(len(img)):
+            img_rescale[i] = (img[i] - img_min)/(img_max - img_min)*10000
         return img_rescale.astype(np.uint16)
 
 

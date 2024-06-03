@@ -5,6 +5,7 @@ import argparse
 from FixImage3D import FixImage3d
 import plot as pm
 import time
+from skimage import exposure
 
 
 """
@@ -13,7 +14,7 @@ This script works for fused HDF5 data (.h5) that contain two channels.
 
 General Run format: 
 
-    python Fix_script.py --h5path [--res] [--orient] [--save_home] [--saveftype]
+    python Fix_script_copy.py --h5path [--res] [--orient] [--save_home] [--saveftype]
 
 
 Arguments: 
@@ -89,21 +90,25 @@ def main():
                         savehome=save_home)
 
         img = fd.readH5Data(res)
+        img = fd.rescale(img)
+        p2, p98 = np.percentile(img, (2, 98), axis = (1,2))
+        p98_max = p98.max()
+        p2_min = p2.min()
+        p2_max = p2.max()
 
         img_corrected = np.zeros_like(img)
         for i in tqdm(range(len(img)), desc="Converting..."):
 
             img_corrected[i] = fd.stripe_fix(img[i])
-            img_corrected[i] = fd.contrast_fix(img_corrected[i], i)
+            img_corrected[i] = fd.contrast_fix(img_corrected[i], 
+                                                p98[i], p2[i], 
+                                                p98_max, p2_min, p2_max)
 
         if savetiff == True:
             fd.savetif(img, img_corrected)
 
         if savehdf5 == True:
             fd.savehdf5(img_corrected)
-
-        # pm.plot_corrected(img_corrected, save_home, ch)
-        # pm.plot_original(img, save_home, ch)
 
 
 if __name__ == '__main__':
